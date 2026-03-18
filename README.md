@@ -37,6 +37,29 @@ An MCP (Model Context Protocol) server for interacting with the Thermomix Cookid
    fastmcp run server.py
    ```
 
+### Claude Desktop (Docker)
+
+1. **Build the Docker image:**
+   ```bash
+   docker build -t cookidoo-mcp .
+   ```
+
+2. **Add to Claude Desktop config** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+   ```json
+   {
+     "mcpServers": {
+       "cookidoo": {
+         "command": "docker",
+         "args": ["run", "--rm", "-i", "-e", "COOKIDOO_EMAIL", "-e", "COOKIDOO_PASSWORD", "cookidoo-mcp"],
+         "env": {
+           "COOKIDOO_EMAIL": "your-email@example.com",
+           "COOKIDOO_PASSWORD": "your-password"
+         }
+       }
+     }
+   }
+   ```
+
 ## Available Tools
 
 - `connect_to_cookidoo` - Authenticate with Cookidoo

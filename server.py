@@ -252,3 +252,7 @@ async def upload_custom_recipe(recipe_json: str) -> str:
         
     except Exception as e:
         return f"Upload failed: {str(e)}"
+
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")
