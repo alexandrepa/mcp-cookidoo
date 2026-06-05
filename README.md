@@ -7,6 +7,7 @@ An MCP (Model Context Protocol) server for interacting with the Thermomix Cookid
 ## Features
 
 - **Authentication**: Connect to your Cookidoo account securely
+- **Recipe Search**: Find recipes by ingredients (and/or a free-text query)
 - **Recipe Details**: Fetch detailed recipe information by ID
 - **Recipe Generation**: Structure new custom recipes
 - **Recipe Upload**: Upload custom recipes to your Cookidoo account
@@ -40,6 +41,7 @@ An MCP (Model Context Protocol) server for interacting with the Thermomix Cookid
 ## Available Tools
 
 - `connect_to_cookidoo` - Authenticate with Cookidoo
+- `search_recipes` - Search recipes by ingredients and/or a query
 - `get_recipe_details` - Get detailed recipe by ID
 - `generate_recipe_structure` - Structure a new recipe
 - `upload_custom_recipe` - Upload a recipe to Cookidoo

@@ -208,7 +208,78 @@ class CookidooService:
             
         except Exception as e:
             raise Exception(f"Failed to create custom recipe: {str(e)}") from e
-    
+
+    async def search_recipes(
+        self,
+        ingredients: list[str],
+        query: Optional[str] = None,
+        language: Optional[str] = None,
+        max_results: int = 5,
+    ) -> list[dict]:
+        """Search Cookidoo recipes, optionally filtered by ingredients.
+
+        Hits the public search endpoint (``{base}/search/{locale}``) using the
+        authenticated session's cookies.
+
+        Note on encoding: each ingredient is sent as its OWN query parameter
+        (``ingredients=chicken&ingredients=zucchini``). Comma-joining them into a
+        single value (``ingredients=chicken,zucchini``) makes the API treat it as
+        one ingredient named "chicken,zucchini" and return zero results -- hence
+        the list-of-tuples below.
+
+        Args:
+            ingredients: Ingredients to filter by, e.g. ["chicken", "zucchini"].
+            query: Optional free-text query.
+            language: Optional locale (e.g. "en", "fr"); defaults to the account's.
+            max_results: Maximum number of recipes to return.
+
+        Returns:
+            list[dict]: Each with keys ``id``, ``name``, ``url``, ``total_time``.
+        """
+        if not self._api_client:
+            raise Exception("Not authenticated. Please call login() first.")
+
+        localization = self._api_client.localization
+        locale = language or localization.language.split("-")[0]
+        base_url = str(self._api_client.api_endpoint)
+
+        params: list[tuple[str, str]] = []
+        if query:
+            params.append(("query", query))
+        for ingredient in ingredients:
+            if ingredient and ingredient.strip():
+                params.append(("ingredients", ingredient.strip()))
+        if max_results:
+            params.append(("pageSize", str(max_results)))
+
+        headers = {"Accept": "application/json"}
+        search_url = f"{base_url}/search/{locale}"
+
+        async with self._api_client._session.get(
+            search_url, params=params, headers=headers
+        ) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                raise Exception(
+                    f"Search failed. Status: {response.status}, Error: {error_text}"
+                )
+            data = await response.json()
+
+        recipes: list[dict] = []
+        for hit in (data.get("data") or data.get("recipes") or [])[:max_results]:
+            recipe_id = hit.get("id") or hit.get("objectID")
+            if not recipe_id:
+                continue
+            recipes.append(
+                {
+                    "id": recipe_id,
+                    "name": hit.get("title") or hit.get("name") or recipe_id,
+                    "url": f"{base_url}/recipes/recipe/{localization.language}/{recipe_id}",
+                    "total_time": hit.get("totalTime"),
+                }
+            )
+        return recipes
+
     @property
     def api_client(self) -> Optional[Cookidoo]:
         """Get the current API client instance."""

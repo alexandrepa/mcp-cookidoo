@@ -58,6 +58,67 @@ async def connect_to_cookidoo() -> str:
 
 
 @mcp.tool()
+async def search_recipes(
+    ingredients: str = "",
+    query: str = "",
+    language: str = "",
+    max_results: int = 5,
+) -> str:
+    """
+    Search Cookidoo recipes by ingredients (and/or a free-text query).
+
+    Use this to find recipes from what you have on hand. You must be connected
+    first using connect_to_cookidoo. Pass the returned recipe IDs to
+    get_recipe_details for full ingredients and steps.
+
+    Args:
+        ingredients: Ingredients to filter by, comma- or newline-separated
+            (e.g. "chicken, zucchini, cream")
+        query: Optional free-text query (e.g. "soup", "quick dinner")
+        language: Optional locale (e.g. "en", "fr"); defaults to your account's
+        max_results: Maximum number of recipes to return (default: 5)
+
+    Returns:
+        str: A numbered list of recipes with name, time, recipe ID, and URL
+    """
+    global _cookidoo_api, _cookidoo_service
+
+    try:
+        # Check if connected
+        if not _cookidoo_api or not _cookidoo_service:
+            return "Not connected. Please run 'connect_to_cookidoo' first."
+
+        # Parse ingredients (split by newlines or commas), like other tools here
+        ingredients_list = [
+            ing.strip()
+            for ing in (ingredients.split('\n') if '\n' in ingredients else ingredients.split(','))
+            if ing.strip()
+        ]
+
+        recipes = await _cookidoo_service.search_recipes(
+            ingredients_list,
+            query=query or None,
+            language=language or None,
+            max_results=max_results,
+        )
+
+        if not recipes:
+            return "No recipes found. Try fewer or more common ingredients."
+
+        result = "Found these recipes:\n\n"
+        for i, recipe in enumerate(recipes, 1):
+            result += f"{i}. {recipe['name']}"
+            if recipe.get('total_time'):
+                result += f" ({recipe['total_time'] // 60} min)"
+            result += f"\n   ID: {recipe['id']}  |  {recipe['url']}\n"
+        result += "\nUse 'get_recipe_details' with an ID for full ingredients and steps."
+        return result
+
+    except Exception as e:
+        return f"Search failed: {str(e)}"
+
+
+@mcp.tool()
 async def get_recipe_details(recipe_id: str) -> str:
     """
     Get detailed information about a specific recipe by its ID.
