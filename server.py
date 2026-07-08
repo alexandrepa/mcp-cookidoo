@@ -246,7 +246,7 @@ async def upload_custom_recipe(recipe_json: str) -> str:
         
         # Get localization for URL
         localization = _cookidoo_api.localization
-        recipe_url = f"https://{localization.url}/recipes/custom-recipes/{recipe_id}"
+        recipe_url = f"{localization.url}/recipes/custom-recipes/{recipe_id}"
         
         return f"Recipe '{recipe.name}' created successfully!\n\nRecipe ID: {recipe_id}\nURL: {recipe_url}\n\nYour recipe is now saved in your Cookidoo account!"
         
