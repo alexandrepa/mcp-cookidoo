@@ -4,6 +4,7 @@ Cookidoo Service
 Module to encapsulate all cookidoo-api logic for interacting with the Cookidoo platform.
 """
 
+import asyncio
 import os
 from typing import Optional
 from dotenv import load_dotenv
@@ -13,7 +14,6 @@ from cookidoo_api.helpers import (
     get_localization_options,
 )
 import aiohttp
-import time
 
 
 def load_cookidoo_credentials() -> tuple[str, str]:
@@ -188,7 +188,7 @@ class CookidooService:
                 }
             }
             
-            time.sleep(5)
+            await asyncio.sleep(5)
 
             async with api_session.patch(update_url, json=update_data, headers=headers) as response:
                 print(f"  Response Status: {response.status}")
