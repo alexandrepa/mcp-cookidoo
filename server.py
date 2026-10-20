@@ -42,8 +42,10 @@ mcp = FastMCP(
     version=VERSION,
     instructions=(
         "Tools for the Thermomix Cookidoo platform: search recipes, read them, and create "
-        "or edit the user's own custom recipes. Always show a recipe to the user and get "
-        "explicit approval before creating or updating it."
+        "or edit the user's own custom recipes. Write recipes with generate_recipe_structure: "
+        "steps that use the Thermomix are structured, so their settings are preset on the "
+        "machine. Always show a recipe to the user and get explicit approval before creating "
+        "or updating it."
     ),
     lifespan=lifespan,
 )
@@ -253,22 +255,37 @@ async def generate_recipe_structure(
     """
     Generate and validate a recipe structure ready for upload to Cookidoo.
 
-    Returns a JSON structure to show to the user and then pass to
+    Every step where the Thermomix runs MUST be a structured step, so that its settings are
+    preset on the machine in guided cooking. Settings written as plain text ("5 sec/vitesse 5")
+    are rejected. Plain text is only for steps without the machine (preheat the oven, serve…).
+
+    Structured step: {"text": "… {settings} …", "settings": [...], "ingredients": [...]}
+    - The text holds one {settings} placeholder per setting. The server writes the setting
+      there in the account's language: never write times, temperatures or speeds yourself.
+    - A setting is manual by default: {"time": seconds, "temperature": "37"…"120" or "varoma"
+      (optional), "speed": "soft" (stirring) or "0.5"…"10", "reverse": true/false}.
+    - Or a mode: {"mode": "dough", "time"}; {"mode": "browning", "time" (max 1800),
+      "temperature": "140"…"160", "power": "gentle"/"intense"}; {"mode": "steaming", "time",
+      "speed" (max "5"), "reverse", "accessory": "varoma"/"simmering_basket"/
+      "varoma_and_simmering_basket"}; {"mode": "turbo", "time": 0.5/1/2, "pulses": 1…10};
+      {"mode": "rice_cooker"}; {"mode": "warm_up", "temperature", "speed"};
+      {"mode": "blend", "time", "speed"}. The server writes the mode's name, so write
+      "then start {settings}" rather than "knead {settings}".
+    - "ingredients" links words of the text to a line of the ingredient list, e.g.
+      [{"text": "the onion", "ingredient": "1 onion, halved"}]. Link the ingredients each
+      step adds.
+
+    Example: {"text": "Add the onion and the oil, then sauté {settings}.", "settings":
+    [{"time": 180, "temperature": "120", "speed": "1", "reverse": true}], "ingredients":
+    [{"text": "the onion", "ingredient": "1 onion, halved"}]}
+
+    Returns the validated JSON: show the recipe to the user, then pass it unchanged to
     upload_custom_recipe or update_custom_recipe.
 
     Args:
         name: Recipe name (required)
         ingredients: Ingredients with quantities, as a list (or one per line)
-        steps: Cooking steps, as a list (or one per line). A step without machine settings
-            or ingredient links is plain text. Otherwise it is an object whose text holds one
-            {settings} placeholder per entry of settings; the server writes each setting into
-            the text and presets it on the Thermomix. A setting's "mode" picks its fields
-            (allowed values are in the schema): "manual" (default: time, temperature, speed,
-            reverse), "dough", "browning", "steaming", "turbo", "rice_cooker", "warm_up",
-            "blend". "ingredients" links words of the text to an ingredient line. Example:
-            {"text": "Add the onion and sauté {settings}.", "settings": [{"time": 180,
-            "temperature": "120", "speed": "1"}], "ingredients": [{"text": "the onion",
-            "ingredient": "1 onion"}]}
+        steps: Steps as a list: structured steps (see above) or plain text
         servings: Number of servings (default: 4, range: 1-20)
         prep_time: Active preparation time in minutes (default: 30)
         total_time: Total time in minutes, at least prep_time (default: 60)
@@ -294,7 +311,9 @@ async def upload_custom_recipe(recipe_json: str) -> str:
     """
     Create a brand new custom recipe on the user's Cookidoo account.
 
-    Only call this after the user explicitly approved the recipe.
+    Build the recipe with generate_recipe_structure first: steps that use the Thermomix must
+    be structured steps, so their settings are preset on the machine. Only call this after
+    the user explicitly approved the recipe.
 
     Args:
         recipe_json: The validated recipe JSON from generate_recipe_structure
@@ -312,8 +331,9 @@ async def update_custom_recipe(recipe_id: str, recipe_json: str) -> str:
     """
     Replace the content of an existing custom recipe on Cookidoo.
 
-    Get the current version with get_custom_recipe, edit it, show the result to the
-    user and only call this after their explicit approval.
+    Get the current version with get_custom_recipe, edit it (steps that use the Thermomix
+    stay structured steps, see generate_recipe_structure), show the result to the user and
+    only call this after their explicit approval.
 
     Args:
         recipe_id: The custom recipe ID returned by list_custom_recipes

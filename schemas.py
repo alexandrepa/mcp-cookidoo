@@ -4,11 +4,18 @@ Recipe Schemas
 Pydantic models for custom recipe data validation.
 """
 
+import re
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_validator
 
 PLACEHOLDER = "{settings}"
+# Thermomix settings written as text ("5 sec/vitesse 5", "3 min/120°C", "vitesse 4"): in a
+# plain-text step they would not be preset on the machine
+_WRITTEN_SETTINGS = re.compile(
+    r"\d+(?:[.,]\d+)?\s*(?:sec|min|h)\b\.?\s*/|\b(?:vitesse|speed)\s*(?:\d|mijotage|soft)",
+    re.IGNORECASE,
+)
 MAX_TIME = 359940  # 99 h 59 min, the longest duration Cookidoo accepts
 
 Speed = Literal[
@@ -214,6 +221,12 @@ class CustomRecipe(BaseModel):
             if isinstance(step, str) and PLACEHOLDER in step:
                 raise ValueError(
                     f"Step {number}: {PLACEHOLDER} needs a step object with its settings"
+                )
+            if isinstance(step, str) and (written := _WRITTEN_SETTINGS.search(step)):
+                raise ValueError(
+                    f"Step {number}: Thermomix settings written as text ({written.group()!r}) "
+                    f"would not be preset on the machine. Make it a structured step: "
+                    f'{{"text": "… {PLACEHOLDER} …", "settings": [{{"time": …, "speed": …}}]}}'
                 )
             for link in [] if isinstance(step, str) else step.ingredients:
                 if link.ingredient not in self.ingredients:
