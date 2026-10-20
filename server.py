@@ -55,6 +55,14 @@ def _get_service() -> CookidooService:
     return _cookidoo_service
 
 
+def _lines(value: list[str] | str, strip_numbering: bool = False) -> list[str]:
+    """Accept a list, or a string with one item per line (commas are kept)."""
+    items = value.split("\n") if isinstance(value, str) else value
+    if strip_numbering:
+        items = [re.sub(r"^\s*(\d+[.)-]|[-•*])\s*", "", item) for item in items]
+    return [item.strip() for item in items if item.strip()]
+
+
 def _split_list(text: str) -> list[str]:
     """Split on newlines if present, otherwise on commas."""
     parts = text.split("\n") if "\n" in text else text.split(",")
@@ -96,7 +104,6 @@ async def connect_to_cookidoo() -> str:
 async def search_recipes(
     query: str = "",
     ingredients: str = "",
-    exclude_ingredients: str = "",
     max_total_time: int | None = None,
     max_results: int = 10,
 ) -> str:
@@ -109,7 +116,6 @@ async def search_recipes(
     Args:
         query: Free-text query (e.g. "risotto", "quick soup")
         ingredients: Ingredients that must be used, comma- or newline-separated
-        exclude_ingredients: Ingredients to avoid, comma- or newline-separated
         max_total_time: Maximum total time in minutes
         max_results: Maximum number of recipes to return (default: 10)
     """
@@ -119,7 +125,6 @@ async def search_recipes(
         result = await _get_service().search_recipes(
             query=query,
             ingredients=_split_list(ingredients),
-            exclude_ingredients=_split_list(exclude_ingredients),
             max_total_time=max_total_time,
             max_results=max_results,
         )
@@ -128,7 +133,7 @@ async def search_recipes(
 
     if not result.recipes:
         return "No recipes found. Try fewer or more common ingredients."
-    lines = [f"Found {result.total} recipes (showing {len(result.recipes)}):", ""]
+    lines = [f"Found {len(result.recipes)} recipes:", ""]
     for i, hit in enumerate(result.recipes, 1):
         lines.append(f"{i}. {hit.name}\n   ID: {hit.id} | {hit.url}")
     return "\n".join(lines)
@@ -223,12 +228,12 @@ async def get_custom_recipe(recipe_id: str) -> str:
 @mcp.tool(annotations=READ_ONLY)
 async def generate_recipe_structure(
     name: str,
-    ingredients: str,
-    steps: str,
+    ingredients: list[str] | str,
+    steps: list[str] | str,
     servings: int = 4,
     prep_time: int = 30,
     total_time: int = 60,
-    hints: str = "",
+    hints: list[str] | str = "",
 ) -> str:
     """
     Generate and validate a recipe structure ready for upload to Cookidoo.
@@ -238,24 +243,22 @@ async def generate_recipe_structure(
 
     Args:
         name: Recipe name (required)
-        ingredients: Ingredients list, one per line or comma-separated
-        steps: Cooking steps, one per line or numbered
+        ingredients: Ingredients with quantities, as a list (or one per line)
+        steps: Cooking steps, as a list (or one per line)
         servings: Number of servings (default: 4, range: 1-20)
         prep_time: Active preparation time in minutes (default: 30)
         total_time: Total time in minutes, at least prep_time (default: 60)
-        hints: Optional cooking tips, one per line or comma-separated
+        hints: Optional cooking tips, as a list (or one per line)
     """
     try:
         recipe = CustomRecipe(
             name=name,
-            ingredients=_split_list(ingredients),
-            steps=[
-                step.strip().lstrip("0123456789.)-• ") for step in steps.split("\n") if step.strip()
-            ],
+            ingredients=_lines(ingredients),
+            steps=_lines(steps, strip_numbering=True),
             servings=servings,
             prep_time=prep_time,
             total_time=total_time,
-            hints=_split_list(hints) or None,
+            hints=_lines(hints) or None,
         )
     except ValidationError as e:
         raise ToolError(f"Validation failed: {e}") from e

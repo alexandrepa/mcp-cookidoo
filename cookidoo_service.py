@@ -19,7 +19,7 @@ from cookidoo_api import (
     CookidooUpdateCustomRecipe,
     ThermomixMachineType,
 )
-from cookidoo_api.helpers import get_localization_options
+from cookidoo_api.helpers import cookidoo_search_result_from_json, get_localization_options
 from dotenv import load_dotenv
 
 from schemas import CustomRecipe
@@ -140,19 +140,33 @@ class CookidooService:
         self,
         query: str | None = None,
         ingredients: list[str] | None = None,
-        exclude_ingredients: list[str] | None = None,
         max_total_time: int | None = None,
         max_results: int = 10,
     ) -> CookidooSearchResult:
-        """Search the Cookidoo catalogue. `max_total_time` is in minutes."""
+        """
+        Search the Cookidoo catalogue. `max_total_time` is in minutes.
+
+        Calls the search endpoint directly rather than Cookidoo.search_recipes: the
+        API expects one `ingredients` parameter per ingredient (a comma-joined value
+        returns nothing), `limit` rather than `pageSize`, and `languages` to keep
+        results in the account's language.
+        """
         api = await self.client()
-        return await api.search_recipes(
-            query or None,
-            ingredients=ingredients or None,
-            exclude_ingredients=exclude_ingredients or None,
-            total_time=max_total_time * 60 if max_total_time else None,
-            page_size=max_results,
-        )
+        locale = api.localization.language.split("-")[0]
+        params: list[tuple[str, str]] = [("languages", locale)]
+        if query:
+            params.append(("query", query))
+        params += [("ingredients", ingredient) for ingredient in ingredients or []]
+        if max_total_time:
+            params.append(("totalTime", str(max_total_time * 60)))
+        params.append(("limit", str(max_results)))
+
+        await api._ensure_endpoints()
+        url = api.api_endpoint / api._path("search:home").format(locale=locale)
+        result = await api._request_json("get", url, "search recipes", params=params)
+        if not result:
+            return CookidooSearchResult(recipes=[], total=0)
+        return cookidoo_search_result_from_json(result, api.localization)
 
     async def get_recipe_details(self, recipe_id: str) -> CookidooShoppingRecipeDetails:
         api = await self.client()

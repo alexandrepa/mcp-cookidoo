@@ -68,7 +68,7 @@ async def test_generate_recipe_structure_round_trips_to_upload(service):
     generated = await call(
         "generate_recipe_structure",
         name="Cookies",
-        ingredients="200 g flour, 100 g butter",
+        ingredients="200 g flour\n100 g butter",
         steps="1. Mix 20 sec/speed 4\n2) Bake 12 min at 180°C",
         servings=6,
         prep_time=15,
@@ -79,6 +79,20 @@ async def test_generate_recipe_structure_round_trips_to_upload(service):
     text = await call("upload_custom_recipe", recipe_json=generated)
     assert "01ABC" in text
     service.create_custom_recipe.assert_awaited_once_with(CustomRecipe(**RECIPE))
+
+
+async def test_generate_keeps_commas_and_accepts_lists(service):
+    generated = await call(
+        "generate_recipe_structure",
+        name="Quiche",
+        ingredients=["300 g potatoes, sliced", "2 eggs"],
+        steps="1. Slice 5 sec/speed 5\n- Bake 30 min, 180°C",
+        hints="Serve warm, with salad",
+    )
+    recipe = json.loads(generated)
+    assert recipe["ingredients"] == ["300 g potatoes, sliced", "2 eggs"]
+    assert recipe["steps"] == ["Slice 5 sec/speed 5", "Bake 30 min, 180°C"]
+    assert recipe["hints"] == ["Serve warm, with salad"]
 
 
 async def test_prep_time_cannot_exceed_total_time(service):

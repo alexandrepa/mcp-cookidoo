@@ -6,7 +6,7 @@ An MCP (Model Context Protocol) server for interacting with the Thermomix Cookid
 
 ## Features
 
-- **Recipe Search**: Find recipes by keywords and/or ingredients (and exclude others)
+- **Recipe Search**: Find recipes by keywords and/or ingredients, with a maximum total time
 - **Recipe Details**: Fetch ingredients, steps and times of any Cookidoo recipe
 - **Custom Recipes**: List, read, create and update the recipes on your own account
 - **Guided Prompt**: `create_thermomix_recipe` walks the assistant through writing a proper Thermomix recipe (EN / FR)
@@ -84,7 +84,7 @@ uv run fastmcp dev inspector fastmcp.json           # MCP Inspector
 | Tool | Description |
 | --- | --- |
 | `connect_to_cookidoo` | Check the configuration / force a fresh login (optional, tools log in automatically) |
-| `search_recipes` | Search recipes by query, ingredients, excluded ingredients and max time |
+| `search_recipes` | Search recipes by query, ingredients and max total time |
 | `get_recipe_details` | Get ingredients, steps and times of a recipe by ID |
 | `list_custom_recipes` | List the custom recipes on your account |
 | `get_custom_recipe` | Get a custom recipe as editable JSON |
