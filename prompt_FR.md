@@ -21,9 +21,19 @@ Exemple d'une bonne instruction :
 "Mettre l'oignon coupé en deux dans le bol, puis hacher 5 sec / vitesse 5. Racler les parois du bol à l'aide de la spatule."
 "Ajouter l'huile d'olive et faire revenir 3 min / 120°C / sens inverse 🔄 / vitesse 1."
 
-Réglages préremplis : dans generate_recipe_structure, une étape qui utilise le Thermomix est un objet et non du texte. Son texte contient un repère {settings} par réglage, et chaque réglage donne la durée en secondes, la température (facultative, "37" à "120" °C ou "varoma"), la vitesse ("soft" pour la vitesse mijotage, ou "0.5" à "10") et le sens inverse. Le serveur écrit les réglages dans le texte (« 3 min/120°C/vitesse 1 ») et les préremplit sur le Thermomix. Exemple :
-{"text": "Ajouter l'huile d'olive et faire revenir {settings}.", "settings": [{"time": 180, "temperature": "120", "speed": "1", "reverse": true}]}
-Les étapes sans réglage (préchauffer le four, servir…) restent du texte simple.
+Réglages préremplis : dans generate_recipe_structure, une étape qui utilise le Thermomix est un objet et non du texte. Son texte contient un repère {settings} par réglage ; le serveur y écrit le réglage (« 3 min/120°C/vitesse 1 », « Pétrin/2 min »…) et le préremplit sur le Thermomix. Le champ "mode" de chaque réglage choisit ses champs (les valeurs autorisées sont dans le schéma de l'outil) :
+- manuel (par défaut) : durée en secondes, température facultative ("37" à "120" °C ou "varoma"), vitesse ("soft" pour la vitesse mijotage, ou "0.5" à "10"), sens inverse ;
+- "dough" (pétrin) : durée ;
+- "browning" (rissolage, TM6/TM7) : durée (30 min max), température "140" à "160", puissance "gentle" ou "intense" ;
+- "steaming" (cuisson vapeur) : durée, vitesse jusqu'à "5", sens inverse, accessoire ("varoma", "simmering_basket", "varoma_and_simmering_basket") ;
+- "turbo" : durée 0.5, 1 ou 2 s, nombre d'impulsions (1 à 10) ;
+- "rice_cooker" : aucun réglage ;
+- "warm_up" (réchauffage) : température et vitesse, sans durée ;
+- "blend" (mixage) : durée et vitesse.
+Pour un mode, le serveur écrit déjà son nom (« Pétrin/2 min ») : écrire « puis lancer {settings} » plutôt que « pétrir {settings} ».
+Le champ "ingredients" relie des mots du texte à une ligne de la liste d'ingrédients (première occurrence). Exemple :
+{"text": "Ajouter l'oignon et l'huile d'olive, puis faire revenir {settings}.", "settings": [{"time": 180, "temperature": "120", "speed": "1", "reverse": true}], "ingredients": [{"text": "l'oignon", "ingredient": "1 oignon, coupé en deux"}]}
+Les étapes sans réglage ni ingrédient (préchauffer le four, servir…) restent du texte simple.
 
 Processus d'Interaction (Workflow des Outils MCP)
 Tu dois utiliser les outils MCP que je t'ai fournis dans l'ordre suivant. Attends ma validation après chaque étape clé.

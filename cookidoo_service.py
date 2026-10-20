@@ -19,7 +19,12 @@ from cookidoo_api import (
     CookidooUpdateCustomRecipe,
     ThermomixMachineType,
 )
-from cookidoo_api.helpers import cookidoo_search_result_from_json, get_localization_options
+from cookidoo_api.const import CUSTOM_RECIPES_PATH_ACCEPT
+from cookidoo_api.helpers import (
+    cookidoo_custom_recipe_from_json,
+    cookidoo_search_result_from_json,
+    get_localization_options,
+)
 from dotenv import load_dotenv
 
 from guided import to_instruction
@@ -177,9 +182,26 @@ class CookidooService:
         api = await self.client()
         return await api.list_custom_recipes()
 
-    async def get_custom_recipe(self, recipe_id: str) -> CookidooCustomRecipe:
+    async def get_custom_recipe(self, recipe_id: str) -> tuple[CookidooCustomRecipe, list]:
+        """
+        A custom recipe, with its steps as Cookidoo's raw JSON.
+
+        cookidoo-api parses the recipe but drops annotation fields it does not model (turbo
+        pulses, sub-second times), so the steps are read from the same response.
+        """
         api = await self.client()
-        return await api.get_custom_recipe(recipe_id)
+        await api._ensure_endpoints()
+        url = api.api_endpoint / api._path("customer-recipes:recipe-details").format(
+            **api.localization.__dict__, id=recipe_id
+        )
+        result = await api._request_json(
+            "get", url, "loading custom recipe", headers={"ACCEPT": CUSTOM_RECIPES_PATH_ACCEPT}
+        )
+        recipe = cookidoo_custom_recipe_from_json(result, api.localization)
+        steps = result["recipeContent"].get("instructions") or [
+            step if isinstance(step, str) else step.text for step in recipe.instructions
+        ]
+        return recipe, list(steps)
 
     async def create_custom_recipe(self, recipe: CustomRecipe) -> CookidooCustomRecipe:
         """Create a brand new custom recipe on the user's account."""

@@ -16,7 +16,7 @@ from fastmcp.exceptions import ToolError
 from pydantic import ValidationError
 
 from cookidoo_service import CookidooService, load_cookidoo_settings
-from guided import from_instruction
+from guided import from_raw
 from schemas import CustomRecipe, Step
 
 PROMPTS_DIR = Path(__file__).parent
@@ -218,23 +218,20 @@ async def get_custom_recipe(recipe_id: str) -> str:
     """
     Get one of the user's custom recipes as JSON, in the format expected by
     update_custom_recipe. Use it as the starting point before editing. Steps with
-    settings preset on the machine come back as structured steps.
+    machine settings or ingredient links come back as structured steps.
 
     Args:
         recipe_id: The custom recipe ID returned by list_custom_recipes
     """
     try:
-        r = await _get_service().get_custom_recipe(recipe_id)
+        r, instructions = await _get_service().get_custom_recipe(recipe_id)
     except Exception as e:
         raise ToolError(f"Failed to get custom recipe: {e}") from e
 
     recipe = {
         "name": r.name,
         "ingredients": r.ingredients,
-        "steps": [
-            s if isinstance(s, str) else s.model_dump()
-            for s in map(from_instruction, r.instructions)
-        ],
+        "steps": [s if isinstance(s, str) else s.model_dump() for s in map(from_raw, instructions)],
         "servings": r.serving_size,
         "prep_time": max(1, round(r.active_time / 60)),
         "total_time": max(1, round(r.total_time / 60)),
@@ -263,13 +260,15 @@ async def generate_recipe_structure(
         name: Recipe name (required)
         ingredients: Ingredients with quantities, as a list (or one per line)
         steps: Cooking steps, as a list (or one per line). A step without machine settings
-            is plain text. A step with Thermomix settings is an object: its text holds one
-            {settings} placeholder per entry of settings, each entry giving time (seconds),
-            temperature ("37" to "120" °C or "varoma", optional), speed ("soft" or "0.5"
-            to "10") and reverse; the settings are written into the text and preset on the
-            machine.
-            Example: {"text": "Add the oil and sauté {settings}.", "settings":
-            [{"time": 180, "temperature": "120", "speed": "1"}]}
+            or ingredient links is plain text. Otherwise it is an object whose text holds one
+            {settings} placeholder per entry of settings; the server writes each setting into
+            the text and presets it on the Thermomix. A setting's "mode" picks its fields
+            (allowed values are in the schema): "manual" (default: time, temperature, speed,
+            reverse), "dough", "browning", "steaming", "turbo", "rice_cooker", "warm_up",
+            "blend". "ingredients" links words of the text to an ingredient line. Example:
+            {"text": "Add the onion and sauté {settings}.", "settings": [{"time": 180,
+            "temperature": "120", "speed": "1"}], "ingredients": [{"text": "the onion",
+            "ingredient": "1 onion"}]}
         servings: Number of servings (default: 4, range: 1-20)
         prep_time: Active preparation time in minutes (default: 30)
         total_time: Total time in minutes, at least prep_time (default: 60)

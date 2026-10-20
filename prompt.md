@@ -21,9 +21,19 @@ Example of a good instruction:
 "Place the onion, halved, into the mixing bowl, then chop 5 sec / speed 5. Scrape down the sides of the mixing bowl with the spatula."
 "Add the olive oil and sauté for 3 min / 120°C / reverse 🔄 / speed 1."
 
-Preset settings: in generate_recipe_structure, a step that uses the Thermomix is an object, not text. Its text holds one {settings} placeholder per setting, and each setting gives the time in seconds, the temperature (optional, "37" to "120" °C or "varoma"), the speed ("soft" for the stirring speed, or "0.5" to "10") and reverse. The server writes the settings into the text ("3 min/120°C/reverse/speed 1") and presets them on the Thermomix. Example:
-{"text": "Add the olive oil and sauté {settings}.", "settings": [{"time": 180, "temperature": "120", "speed": "1", "reverse": true}]}
-Steps without settings (preheating the oven, serving…) stay plain text.
+Preset settings: in generate_recipe_structure, a step that uses the Thermomix is an object, not text. Its text holds one {settings} placeholder per setting; the server writes the setting there ("3 min/120°C/reverse/speed 1", "Dough mode/2 min"…) and presets it on the Thermomix. Each setting's "mode" picks its fields (allowed values are in the tool schema):
+- manual (default): time in seconds, optional temperature ("37" to "120" °C or "varoma"), speed ("soft" for the stirring speed, or "0.5" to "10"), reverse;
+- "dough": time;
+- "browning" (TM6/TM7): time (30 min max), temperature "140" to "160", power "gentle" or "intense";
+- "steaming": time, speed up to "5", reverse, accessory ("varoma", "simmering_basket", "varoma_and_simmering_basket");
+- "turbo": time 0.5, 1 or 2 s, number of pulses (1 to 10);
+- "rice_cooker": no settings;
+- "warm_up": temperature and speed, no time;
+- "blend": time and speed.
+For a mode, the server already writes its name ("Dough mode/2 min"): write "then start {settings}" rather than "knead {settings}".
+"ingredients" links words of the text to a line of the ingredient list (first occurrence). Example:
+{"text": "Add the onion and the olive oil, then sauté {settings}.", "settings": [{"time": 180, "temperature": "120", "speed": "1", "reverse": true}], "ingredients": [{"text": "the onion", "ingredient": "1 onion, halved"}]}
+Steps without settings or ingredient links (preheating the oven, serving…) stay plain text.
 
 Interaction Process (MCP Tool Workflow)
 You must use the MCP tools I have provided in the following order. Wait for my validation after each key step.

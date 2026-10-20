@@ -95,26 +95,41 @@ uv run fastmcp dev inspector fastmcp.json           # MCP Inspector
 
 ## Recipe steps
 
-A step is either plain text, or an object whose settings are preset on the Thermomix in
-guided cooking. The text holds one `{settings}` placeholder per setting, replaced by the
-settings written out in the account's language:
+A step is either plain text, or an object with Thermomix settings preset in guided cooking
+and/or ingredient links. The text holds one `{settings}` placeholder per setting, replaced
+by the setting written out in the account's language:
 
 ```json
 {
-  "text": "Add the olive oil and sauté {settings}, without the measuring cup.",
-  "settings": [{"time": 180, "temperature": "120", "speed": "1", "reverse": true}]
+  "text": "Add the onion and the olive oil, then sauté {settings}.",
+  "settings": [{"time": 180, "temperature": "120", "speed": "1", "reverse": true}],
+  "ingredients": [{"text": "the onion", "ingredient": "1 onion, halved"}]
 }
 ```
 
-| Field | Values |
-| --- | --- |
-| `time` | Duration in seconds |
-| `temperature` | Optional: `"37"` to `"120"` (°C, Thermomix steps) or `"varoma"` |
-| `speed` | `"soft"` (stirring speed) or `"0.5"` to `"10"` by halves |
-| `reverse` | `true` for reverse blade direction (default `false`) |
+A setting's `mode` selects its fields. The limits are those the Cookidoo API accepts:
 
-Invalid settings are rejected. `get_custom_recipe` returns steps in the same format, so a
-recipe keeps its settings when edited.
+| `mode` | Fields | Written as (fr) |
+| --- | --- | --- |
+| `manual` (default) | `time` (s, up to 99 h 59), `temperature` (optional: `"37"`…`"95"` by 5, `"98"`, `"100"`…`"120"` by 5, or `"varoma"`), `speed`, `reverse` | `3 min/120°C/vitesse 1` |
+| `dough` | `time` | `Pétrin/2 min` |
+| `browning` | `time` (up to 30 min), `temperature` (`"140"`…`"160"` by 5), `power` (`gentle`, `intense`) | `Rissolage/5 min/160°C/intense` |
+| `steaming` | `time`, `speed` (up to `"5"`), `reverse`, `accessory` (`varoma`, `simmering_basket`, `varoma_and_simmering_basket`) | `Cuisson vapeur/20 min/Varoma/vitesse 1` |
+| `turbo` | `time` (0.5, 1 or 2 s), `pulses` (1 to 10) | `Turbo/0.5 sec/3 fois` |
+| `rice_cooker` | none | `Rice cooker` |
+| `warm_up` | `temperature`, `speed` (no time: Cookidoo drops it) | `Réchauffage/65°C/vitesse 2` |
+| `blend` | `time`, `speed` | `Mixage/1 min/vitesse 10` |
+
+`speed` is `"soft"` (stirring speed) or `"0.5"` to `"10"` by halves. Cookidoo has no other
+mode for custom recipes (sous-vide, slow cooking, fermentation… only exist in catalogue
+recipes). It does not check that the modes exist on the devices listed for the recipe.
+
+Modes are written with their name, so the text should not repeat it ("then start
+{settings}" rather than "knead {settings}").
+
+`ingredients` links words of the step text (their first occurrence) to a line of the
+ingredient list. Invalid settings and links are rejected. `get_custom_recipe` returns steps
+in the same format, so a recipe keeps its settings and links when edited.
 
 ## Development
 
