@@ -6,6 +6,7 @@ Main server file containing MCP tool definitions for interacting with Cookidoo.
 
 import json
 import re
+import tomllib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -18,6 +19,7 @@ from cookidoo_service import CookidooService, load_cookidoo_settings
 from schemas import CustomRecipe
 
 PROMPTS_DIR = Path(__file__).parent
+VERSION = tomllib.loads((PROMPTS_DIR / "pyproject.toml").read_text())["project"]["version"]
 READ_ONLY = {"readOnlyHint": True, "openWorldHint": True}
 WRITE = {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True}
 
@@ -36,6 +38,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[None]:
 
 mcp = FastMCP(
     "cookidoo-mcp-server",
+    version=VERSION,
     instructions=(
         "Tools for the Thermomix Cookidoo platform: search recipes, read them, and create "
         "or edit the user's own custom recipes. Always show a recipe to the user and get "

@@ -61,6 +61,11 @@ async def test_all_tools_registered():
     assert prompts == {"create_thermomix_recipe"}
 
 
+async def test_server_reports_project_version():
+    async with Client(server.mcp) as client:
+        assert client.server_info.version == server.VERSION == "1.0.0"
+
+
 async def test_generate_recipe_structure_round_trips_to_upload(service):
     service.create_custom_recipe.return_value = SimpleNamespace(
         name="Cookies", id="01ABC", url="https://cookidoo.fr/created-recipes/fr-FR/01ABC"

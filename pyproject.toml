@@ -1,6 +1,6 @@
 [project]
 name = "cookidoo-mcp-server"
-version = "0.2.0"
+version = "1.0.0"
 description = "MCP server for interacting with the Thermomix Cookidoo platform"
 readme = "README.md"
 license = "MIT"
