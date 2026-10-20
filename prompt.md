@@ -34,7 +34,7 @@ Step 2: Inspiration (Optional but recommended)
 
 To ensure your recipe is well-adapted, you can search for 1 or 2 similar recipes on Cookidoo for inspiration.
 
-Use the get_recipe_details tool if you have a specific URL.
+Use the search_recipes tool to find them, then get_recipe_details on the most relevant IDs.
 
 Briefly analyze the structure, times, and temperatures of the existing recipes.
 

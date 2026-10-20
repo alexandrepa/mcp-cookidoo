@@ -4,212 +4,203 @@ Cookidoo Service
 Module to encapsulate all cookidoo-api logic for interacting with the Cookidoo platform.
 """
 
+import asyncio
 import os
-from typing import Optional
-from dotenv import load_dotenv
+from dataclasses import dataclass
+
 from aiohttp import ClientSession
-from cookidoo_api import Cookidoo, CookidooConfig
-from cookidoo_api.helpers import (
-    get_localization_options,
+from cookidoo_api import (
+    Cookidoo,
+    CookidooConfig,
+    CookidooCreateCustomRecipe,
+    CookidooCustomRecipe,
+    CookidooSearchResult,
+    CookidooShoppingRecipeDetails,
+    CookidooUpdateCustomRecipe,
+    ThermomixMachineType,
 )
-import aiohttp
-import time
+from cookidoo_api.helpers import get_localization_options
+from dotenv import load_dotenv
+
+from schemas import CustomRecipe
 
 
-def load_cookidoo_credentials() -> tuple[str, str]:
+@dataclass(frozen=True)
+class CookidooSettings:
+    """Settings loaded from the environment / .env file."""
+
+    email: str
+    password: str
+    country: str = "fr"
+    language: str = "fr-FR"
+    device: ThermomixMachineType = ThermomixMachineType.TM6
+
+
+def load_cookidoo_settings() -> CookidooSettings:
     """
-    Load Cookidoo credentials from .env file.
-    
+    Load Cookidoo settings from the environment (and .env file if present).
+
     Returns:
-        tuple[str, str]: Email and password
-        
+        CookidooSettings: Credentials, localization and default device
+
     Raises:
-        ValueError: If credentials are not found in environment variables
+        ValueError: If credentials are missing or the device is unknown
     """
     load_dotenv()
-    
+
     email = os.getenv("COOKIDOO_EMAIL")
     password = os.getenv("COOKIDOO_PASSWORD")
-    
     if not email or not password:
         raise ValueError(
             "Missing Cookidoo credentials. Please set COOKIDOO_EMAIL and "
-            "COOKIDOO_PASSWORD in your .env file"
+            "COOKIDOO_PASSWORD in your environment or .env file"
         )
-    
-    return email, password
+
+    device = os.getenv("COOKIDOO_DEVICE", "TM6").upper()
+    try:
+        machine = ThermomixMachineType(device)
+    except ValueError:
+        valid = ", ".join(m.value for m in ThermomixMachineType)
+        raise ValueError(f"Unknown COOKIDOO_DEVICE '{device}'. Use one of: {valid}") from None
+
+    return CookidooSettings(
+        email=email,
+        password=password,
+        country=os.getenv("COOKIDOO_COUNTRY", "fr").lower(),
+        language=os.getenv("COOKIDOO_LANGUAGE", "fr-FR"),
+        device=machine,
+    )
 
 
 class CookidooService:
     """Service class for managing Cookidoo API interactions."""
-    
-    def __init__(self, email: str, password: str):
-        """
-        Initialize the Cookidoo service with credentials.
-        
-        Args:
-            email: Cookidoo account email
-            password: Cookidoo account password
-        """
-        self.email = email
-        self.password = password
-        self._api_client: Optional[Cookidoo] = None
-        self._session: Optional[ClientSession] = None
-    
+
+    def __init__(self, settings: CookidooSettings):
+        self.settings = settings
+        self._api_client: Cookidoo | None = None
+        self._session: ClientSession | None = None
+        self._lock = asyncio.Lock()
+
     async def login(self) -> Cookidoo:
         """
         Authenticate with Cookidoo and return the API client.
-        
-        Returns:
-            Cookidoo: Authenticated Cookidoo API client
-            
-        Raises:
-            Exception: If authentication fails
-        """
-        try:
-            # Create aiohttp ClientSession with a timeout
-            self._session = ClientSession(connector=aiohttp.TCPConnector(verify_ssl=False))
-            
 
-            # Create CookidooConfig with credentials
-            config = CookidooConfig(
-                email=self.email,
-                password=self.password,
-                localization=(
-                    await get_localization_options(country="fr", language="fr-FR")
-                )[0],
+        Raises:
+            ValueError: If the configured country/language is not supported
+            CookidooException: If authentication fails
+        """
+        async with self._lock:
+            await self._close_session()
+
+            localizations = await get_localization_options(
+                country=self.settings.country, language=self.settings.language
             )
-            
-            # Create Cookidoo API client with session and config
-            self._api_client = Cookidoo(session=self._session, cfg=config)
-            
-            # Perform login (no parameters needed - uses config)
-            await self._api_client.login()
-            
-            return self._api_client
-            
-        except Exception as e:
-            # Clean up session if login fails
-            if self._session:
-                await self._session.close()
-            raise Exception(f"Failed to authenticate with Cookidoo: {str(e)}") from e
-    
+            if not localizations:
+                raise ValueError(
+                    f"No Cookidoo site for country '{self.settings.country}' and "
+                    f"language '{self.settings.language}'"
+                )
+
+            self._session = ClientSession()
+            try:
+                client = Cookidoo(
+                    session=self._session,
+                    cfg=CookidooConfig(
+                        email=self.settings.email,
+                        password=self.settings.password,
+                        localization=localizations[0],
+                    ),
+                )
+                await client.login()
+            except BaseException:
+                await self._close_session()
+                raise
+
+            self._api_client = client
+            return client
+
+    async def client(self) -> Cookidoo:
+        """Return the authenticated client, logging in on first use."""
+        if self._api_client is None:
+            return await self.login()
+        return self._api_client
+
+    async def _close_session(self) -> None:
+        self._api_client = None
+        if self._session is not None:
+            await self._session.close()
+            self._session = None
+
     async def close(self) -> None:
         """Close the aiohttp session."""
-        if self._session:
-            await self._session.close()
-    
-    async def create_custom_recipe(
-        self,
-        name: str,
-        ingredients: list[str],
-        steps: list[str],
-        servings: int = 4,
-        prep_time: int = 30,
-        total_time: int = 60,
-        hints: Optional[list[str]] = None,
-    ) -> str:
-        """
-        Create a completely new custom recipe from scratch using the undocumented API.
-        
-        Args:
-            name: Recipe name
-            ingredients: List of ingredient descriptions
-            steps: List of cooking step descriptions
-            servings: Number of servings (default: 4)
-            prep_time: Preparation time in minutes (default: 30)
-            total_time: Total cooking time in minutes (default: 60)
-            hints: Optional list of hints/tips for the recipe
-            
-        Returns:
-            str: The created recipe ID
-            
-        Raises:
-            Exception: If recipe creation fails
-        """
-        if not self._api_client or not self._session:
-            raise Exception("Not authenticated. Please call login() first.")
-        
-        try:
-            # Get the access token from the authenticated client
-            auth_data = self._api_client.auth_data
-            if not auth_data:
-                raise Exception("No authentication data available")
-            
-            localization = self._api_client.localization
-            # Extract base domain from the URL (e.g., "https://cookidoo.fr/foundation/fr-FR" -> "https://cookidoo.fr")
-            url_parts = localization.url.split("/")
-            base_url = f"{url_parts[0]}//{url_parts[2]}"  # protocol + domain
-            locale = localization.language 
-            
-            # Headers for the undocumented API
-            headers = {
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self._api_client.auth_data.access_token}"
-            }
-            
-            # Use the API client's session to ensure cookies are shared
-            api_session = self._api_client._session
-        
-            
-            # Step 1: Create the recipe with just the name
-            create_url = f"{base_url}/created-recipes/{locale}"
-            create_data = {"recipeName": name}
-            
-            async with api_session.post(
-                create_url, json=create_data, headers=headers
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise Exception(
-                        f"Failed to create recipe. Status: {response.status}, Error: {error_text}"
-                    )
-                
-                result = await response.json()
-                recipe_id = result.get("recipeId")
-                
-                if not recipe_id:
-                    raise Exception("No recipe ID returned from creation")
-            
-            # Step 2: Update recipe with ingredients
-            update_url = f"{base_url}/created-recipes/{locale}/{recipe_id}"
-            
-            # PATCH requires a complete recipe structure with ALL required fields
-            update_data = {
-                "name": name,
-                "image": None,  # Can be null or match pattern: ^((prod|nonprod)/img/customer-recipe/)?[A-Za-z0-9-_]{1,}.(bmp|jpe|jpeg|jpg|png)$
-                "isImageOwnedByUser": False,
-                "tools": ["TM6"],
-                "yield": {"value": servings, "unitText": "portion"},
-                "prepTime": prep_time * 60,  # Convert minutes to seconds
-                "cookTime": 0,
-                "totalTime": total_time * 60,  # Convert minutes to seconds
-                "ingredients": [{"type": "INGREDIENT", "text": ing} for ing in ingredients],
-                "instructions": [{"type": "STEP", "text": step} for step in steps],
-                "hints": "\n".join(hints) if hints and isinstance(hints, list) else (hints if hints else ""),
-                "workStatus": "PRIVATE",
-                "recipeMetadata": {
-                    "requiresAnnotationsCheck": False
-                }
-            }
-            
-            time.sleep(5)
+        async with self._lock:
+            await self._close_session()
 
-            async with api_session.patch(update_url, json=update_data, headers=headers) as response:
-                print(f"  Response Status: {response.status}")
-                response_text = await response.text()
-                print(f"  Response Body: {response_text}")
-                
-                if response.status not in [200, 204]:
-                    raise Exception(f"Failed to update recipe: {response_text}")
-            
-            return recipe_id
-            
-        except Exception as e:
-            raise Exception(f"Failed to create custom recipe: {str(e)}") from e
-    
+    async def search_recipes(
+        self,
+        query: str | None = None,
+        ingredients: list[str] | None = None,
+        exclude_ingredients: list[str] | None = None,
+        max_total_time: int | None = None,
+        max_results: int = 10,
+    ) -> CookidooSearchResult:
+        """Search the Cookidoo catalogue. `max_total_time` is in minutes."""
+        api = await self.client()
+        return await api.search_recipes(
+            query or None,
+            ingredients=ingredients or None,
+            exclude_ingredients=exclude_ingredients or None,
+            total_time=max_total_time * 60 if max_total_time else None,
+            page_size=max_results,
+        )
+
+    async def get_recipe_details(self, recipe_id: str) -> CookidooShoppingRecipeDetails:
+        api = await self.client()
+        return await api.get_recipe_details(recipe_id)
+
+    async def list_custom_recipes(self) -> list[CookidooCustomRecipe]:
+        api = await self.client()
+        return await api.list_custom_recipes()
+
+    async def get_custom_recipe(self, recipe_id: str) -> CookidooCustomRecipe:
+        api = await self.client()
+        return await api.get_custom_recipe(recipe_id)
+
+    async def create_custom_recipe(self, recipe: CustomRecipe) -> CookidooCustomRecipe:
+        """Create a brand new custom recipe on the user's account."""
+        api = await self.client()
+        return await api.create_custom_recipe(
+            CookidooCreateCustomRecipe(
+                name=recipe.name,
+                ingredients=recipe.ingredients,
+                instructions=list(recipe.steps),
+                serving_size=recipe.servings,
+                active_time=recipe.prep_time * 60,
+                total_time=recipe.total_time * 60,
+                tools=[self.settings.device],
+                hints=recipe.hints or [],
+            )
+        )
+
+    async def update_custom_recipe(
+        self, recipe_id: str, recipe: CustomRecipe
+    ) -> CookidooCustomRecipe:
+        """Replace the content of an existing custom recipe."""
+        api = await self.client()
+        return await api.update_custom_recipe(
+            recipe_id,
+            CookidooUpdateCustomRecipe(
+                name=recipe.name,
+                ingredients=recipe.ingredients,
+                instructions=list(recipe.steps),
+                serving_size=recipe.servings,
+                active_time=recipe.prep_time * 60,
+                total_time=recipe.total_time * 60,
+                hints=recipe.hints or [],
+            ),
+        )
+
     @property
-    def api_client(self) -> Optional[Cookidoo]:
-        """Get the current API client instance."""
-        return self._api_client
+    def localization_url(self) -> str | None:
+        """Base URL of the Cookidoo site, once connected."""
+        return self._api_client.localization.url if self._api_client else None

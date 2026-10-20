@@ -34,7 +34,7 @@ Confirme-moi que la connexion est réussie.
 
 Pour t'assurer que ta recette est bien adaptée, tu peux chercher 1 ou 2 recettes similaires sur Cookidoo pour t'en inspirer.
 
-Utilise l'outil get_recipe_details si tu as une URL précise.
+Utilise l'outil search_recipes pour les trouver, puis get_recipe_details sur les IDs les plus pertinents.
 
 Analyse brièvement la structure, les temps et les températures des recettes existantes.
 
