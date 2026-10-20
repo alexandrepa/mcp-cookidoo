@@ -16,7 +16,7 @@ from schemas import CustomRecipe, Step
 RECIPE = {
     "name": "Cookies",
     "ingredients": ["200 g flour", "100 g butter"],
-    "steps": ["Mix 20 sec/speed 4", "Bake 12 min at 180°C"],
+    "steps": ["Mix the butter and the flour", "Bake 12 min at 180°C"],
     "servings": 6,
     "prep_time": 15,
     "total_time": 30,
@@ -66,7 +66,7 @@ async def test_all_tools_registered():
 
 async def test_server_reports_project_version():
     async with Client(server.mcp) as client:
-        assert client.server_info.version == server.VERSION == "1.1.0"
+        assert client.server_info.version == server.VERSION == "1.2.0"
 
 
 async def test_generate_recipe_structure_round_trips_to_upload(service):
@@ -77,7 +77,7 @@ async def test_generate_recipe_structure_round_trips_to_upload(service):
         "generate_recipe_structure",
         name="Cookies",
         ingredients="200 g flour\n100 g butter",
-        steps="1. Mix 20 sec/speed 4\n2) Bake 12 min at 180°C",
+        steps="1. Mix the butter and the flour\n2) Bake 12 min at 180°C",
         servings=6,
         prep_time=15,
         total_time=30,
@@ -94,12 +94,12 @@ async def test_generate_keeps_commas_and_accepts_lists(service):
         "generate_recipe_structure",
         name="Quiche",
         ingredients=["300 g potatoes, sliced", "2 eggs"],
-        steps="1. Slice 5 sec/speed 5\n- Bake 30 min, 180°C",
+        steps="1. Slice the potatoes\n- Bake 30 min, 180°C",
         hints="Serve warm, with salad",
     )
     recipe = json.loads(generated)
     assert recipe["ingredients"] == ["300 g potatoes, sliced", "2 eggs"]
-    assert recipe["steps"] == ["Slice 5 sec/speed 5", "Bake 30 min, 180°C"]
+    assert recipe["steps"] == ["Slice the potatoes", "Bake 30 min, 180°C"]
     assert recipe["hints"] == ["Serve warm, with salad"]
 
 
@@ -221,6 +221,39 @@ async def test_generate_accepts_structured_steps(service):
 async def test_generate_rejects_invalid_steps(service, steps):
     with pytest.raises(ToolError):
         await call("generate_recipe_structure", name="Soupe", ingredients=["1 oignon"], steps=steps)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Hacher 5 sec/vitesse 5.",
+        "Faire revenir 3 min/120°C/vitesse 1.",
+        "Mix 20 sec / speed 4",
+        "Cuire 1 min 30 sec/sens inverse/vitesse mijotage.",
+        "Mixer à vitesse 4 pendant 30 secondes.",
+    ],
+)
+async def test_generate_rejects_settings_written_as_text(service, text):
+    with pytest.raises(ToolError, match="structured step"):
+        await call("generate_recipe_structure", name="Soupe", ingredients=["a"], steps=[text])
+
+
+async def test_plain_text_without_machine_settings_is_accepted(service):
+    steps = [
+        "Préchauffer le four à 180°C (Th. 6).",
+        "Enfourner pour 25 minutes à 180°C, puis laisser reposer 10 min.",
+        "Servir à 4 personnes avec 1/2 citron.",
+    ]
+    generated = await call("generate_recipe_structure", name="Soupe", ingredients="a", steps=steps)
+    assert json.loads(generated)["steps"] == steps
+
+
+async def test_tool_description_asks_for_structured_steps():
+    async with Client(server.mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+    description = tools["generate_recipe_structure"].description
+    assert "MUST be a structured step" in description.split("\n\n")[1]
+    assert "generate_recipe_structure" in tools["upload_custom_recipe"].description
 
 
 async def test_get_custom_recipe_round_trips_structured_steps(service):

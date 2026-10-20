@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.0] - 2026-10-20
+
+### Changed
+- The tool descriptions now state the structured step format, since some MCP clients (Home
+  Assistant) only show the first part of a tool description and not the server instructions
+  or prompts: steps that use the Thermomix must be structured
+- A plain-text step containing Thermomix settings written as text ("5 sec/vitesse 5",
+  "vitesse 4") is rejected with an error explaining how to structure it, instead of being
+  uploaded without settings preset on the machine
+
 ## [1.1.0] - 2026-10-20
 
 ### Added

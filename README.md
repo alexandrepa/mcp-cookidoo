@@ -128,7 +128,8 @@ Modes are written with their name, so the text should not repeat it ("then start
 {settings}" rather than "knead {settings}").
 
 `ingredients` links words of the step text (their first occurrence) to a line of the
-ingredient list. Invalid settings and links are rejected. `get_custom_recipe` returns steps
+ingredient list. Invalid settings and links are rejected, and so is a plain-text step with settings
+written as text ("5 sec/vitesse 5"), which would not be preset on the machine. `get_custom_recipe` returns steps
 in the same format, so a recipe keeps its settings and links when edited.
 
 ## Development
