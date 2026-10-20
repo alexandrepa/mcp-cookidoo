@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0] - 2026-10-20
+
+### Added
+- Guided cooking: a recipe step can be an object whose Thermomix settings are written into its
+  text and preset on the machine: manual settings (time, temperature, speed, reverse) and the
+  dough, browning, steaming, turbo, rice cooker, warm-up and blend modes, with the limits the
+  Cookidoo API accepts. Plain-text steps are unchanged
+- Ingredient links: words of a step can be linked to a line of the ingredient list
+- `get_custom_recipe` returns steps with settings and links in the same format (read from the
+  raw API response, so turbo pulses and sub-second times are kept), so editing a recipe keeps
+  them
+- The `create_thermomix_recipe` prompt asks for structured steps
+
 ## [1.0.0] - 2026-10-20
 
 First stable release, rebuilt on cookidoo-api 0.19 and FastMCP 4.

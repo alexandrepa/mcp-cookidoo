@@ -3,12 +3,15 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from cookidoo_api import Cookidoo, CookidooLocalizationConfig
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
+from yarl import URL
 
 import server
 from cookidoo_service import CookidooService, CookidooSettings, load_cookidoo_settings
-from schemas import CustomRecipe
+from guided import to_instruction
+from schemas import CustomRecipe, Step
 
 RECIPE = {
     "name": "Cookies",
@@ -63,7 +66,7 @@ async def test_all_tools_registered():
 
 async def test_server_reports_project_version():
     async with Client(server.mcp) as client:
-        assert client.server_info.version == server.VERSION == "1.0.0"
+        assert client.server_info.version == server.VERSION == "1.1.0"
 
 
 async def test_generate_recipe_structure_round_trips_to_upload(service):
@@ -156,19 +159,122 @@ async def test_get_recipe_details_formats_steps_and_times(service):
     assert "1. Cook 20 min" in text
 
 
-async def test_get_custom_recipe_returns_editable_json(service):
-    service.get_custom_recipe.return_value = SimpleNamespace(
-        name="Cookies",
-        ingredients=RECIPE["ingredients"],
-        instructions=[RECIPE["steps"][0], SimpleNamespace(text=RECIPE["steps"][1])],
+def custom_recipe(steps, ingredients):
+    """What CookidooService.get_custom_recipe returns: the recipe and its raw steps."""
+    recipe = SimpleNamespace(
+        name="Soupe",
+        ingredients=ingredients,
         serving_size=6,
         active_time=900,
         total_time=1800,
         hints=[],
         url="https://x",
     )
+    instructions = [to_instruction(step, "fr-FR") for step in steps]
+    return recipe, Cookidoo._process_recipe_steps(instructions, ingredients)
+
+
+async def test_get_custom_recipe_returns_editable_json(service):
+    recipe, raw = custom_recipe(RECIPE["steps"], RECIPE["ingredients"])
+    recipe.name = "Cookies"
+    service.get_custom_recipe.return_value = (recipe, raw)
     text = await call("get_custom_recipe", recipe_id="01ABC")
     assert json.loads(text.split("\n\n", 1)[1]) == RECIPE
+
+
+SAUTE = {
+    "text": "Faire revenir l'oignon {settings}.",
+    "settings": [
+        {"mode": "manual", "time": 180, "temperature": "120", "speed": "1", "reverse": False}
+    ],
+    "ingredients": [{"text": "l'oignon", "ingredient": "1 oignon"}],
+}
+KNEAD = {
+    "text": "Pétrir {settings}.",
+    "settings": [{"mode": "dough", "time": 120}],
+    "ingredients": [],
+}
+
+
+async def test_generate_accepts_structured_steps(service):
+    generated = await call(
+        "generate_recipe_structure",
+        name="Soupe",
+        ingredients=["1 oignon"],
+        steps=[
+            "1. Éplucher l'oignon.",
+            SAUTE,
+            {"text": "Pétrir {settings}.", "settings": [{"mode": "dough", "time": 120}]},
+        ],
+    )
+    assert json.loads(generated)["steps"] == ["Éplucher l'oignon.", SAUTE, KNEAD]
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        [{"text": "Mixer {settings}.", "settings": [{"time": 10, "speed": "12"}]}],
+        [{"text": "Mixer {settings}.", "settings": [{"mode": "sous_vide", "time": 10}]}],
+        [{"text": "Ajouter le sel.", "ingredients": [{"text": "sel", "ingredient": "sel"}]}],
+    ],
+)
+async def test_generate_rejects_invalid_steps(service, steps):
+    with pytest.raises(ToolError):
+        await call("generate_recipe_structure", name="Soupe", ingredients=["1 oignon"], steps=steps)
+
+
+async def test_get_custom_recipe_round_trips_structured_steps(service):
+    steps = ["Éplucher.", Step(**SAUTE), Step(**KNEAD)]
+    service.get_custom_recipe.return_value = custom_recipe(steps, ["1 oignon"])
+    read = (await call("get_custom_recipe", recipe_id="01ABC")).split("\n\n", 1)[1]
+    generated = await call(
+        "generate_recipe_structure", name="Soupe", ingredients=["1 oignon"], steps=steps
+    )
+    assert (
+        json.loads(read)["steps"] == json.loads(generated)["steps"] == ["Éplucher.", SAUTE, KNEAD]
+    )
+
+
+async def test_service_reads_raw_steps(monkeypatch):
+    raw = {
+        "recipeId": "01ABC",
+        "recipeContent": {
+            "name": "Soupe",
+            "ingredients": [{"type": "INGREDIENT", "text": "1 oignon"}],
+            "instructions": [{"type": "STEP", "text": "Turbo/0.5 sec/3 fois"}],
+            "yield": {"value": 4, "unitText": "portion"},
+            "prepTime": 600,
+            "totalTime": 1800,
+        },
+    }
+    request = AsyncMock(return_value=raw)
+    api = SimpleNamespace(
+        _ensure_endpoints=AsyncMock(),
+        api_endpoint=URL("https://cookidoo.fr"),
+        _path=lambda name: "created-recipes/{language}/{id}",
+        localization=CookidooLocalizationConfig(country_code="fr", language="fr-FR"),
+        _request_json=request,
+    )
+    svc = CookidooService(CookidooSettings(email="a@b.c", password="x"))
+    monkeypatch.setattr(svc, "client", AsyncMock(return_value=api))
+    recipe, steps = await svc.get_custom_recipe("01ABC")
+    assert recipe.name == "Soupe"
+    assert steps == raw["recipeContent"]["instructions"]
+    assert str(request.await_args.args[1]) == "https://cookidoo.fr/created-recipes/fr-FR/01ABC"
+    assert "customer-recipe.full" in request.await_args.kwargs["headers"]["ACCEPT"]
+
+
+async def test_service_sends_settings_in_account_language(monkeypatch):
+    api = SimpleNamespace(create_custom_recipe=AsyncMock(), update_custom_recipe=AsyncMock())
+    svc = CookidooService(CookidooSettings(email="a@b.c", password="x", language="fr-FR"))
+    monkeypatch.setattr(svc, "client", AsyncMock(return_value=api))
+    recipe = CustomRecipe(name="Soupe", ingredients=["1 oignon"], steps=["Éplucher.", SAUTE])
+    await svc.create_custom_recipe(recipe)
+    await svc.update_custom_recipe("01ABC", recipe)
+    expected = ["Éplucher.", to_instruction(Step(**SAUTE), "fr-FR")]
+    assert expected[1].text == "Faire revenir l'oignon 3 min/120°C/vitesse 1."
+    assert api.create_custom_recipe.await_args.args[0].instructions == expected
+    assert api.update_custom_recipe.await_args.args[1].instructions == expected
 
 
 async def test_prompt_inserts_dish():
