@@ -53,16 +53,14 @@ Add to `claude_desktop_config.json`:
 
 ### Docker
 
-```bash
-docker build -t cookidoo-mcp .
-```
+A prebuilt image (amd64 / arm64) is published for each release, no Python needed:
 
 ```json
 {
   "mcpServers": {
     "cookidoo": {
       "command": "docker",
-      "args": ["run", "--rm", "-i", "-e", "COOKIDOO_EMAIL", "-e", "COOKIDOO_PASSWORD", "cookidoo-mcp"],
+      "args": ["run", "--rm", "-i", "-e", "COOKIDOO_EMAIL", "-e", "COOKIDOO_PASSWORD", "ghcr.io/alexandrepa/mcp-cookidoo:1"],
       "env": {
         "COOKIDOO_EMAIL": "your-email@example.com",
         "COOKIDOO_PASSWORD": "your-password"
@@ -71,6 +69,8 @@ docker build -t cookidoo-mcp .
   }
 }
 ```
+
+To build it yourself instead: `docker build -t cookidoo-mcp .`
 
 ### HTTP / development
 
