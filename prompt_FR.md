@@ -21,6 +21,10 @@ Exemple d'une bonne instruction :
 "Mettre l'oignon coupé en deux dans le bol, puis hacher 5 sec / vitesse 5. Racler les parois du bol à l'aide de la spatule."
 "Ajouter l'huile d'olive et faire revenir 3 min / 120°C / sens inverse 🔄 / vitesse 1."
 
+Réglages préremplis : dans generate_recipe_structure, une étape qui utilise le Thermomix est un objet et non du texte. Son texte contient un repère {settings} par réglage, et chaque réglage donne la durée en secondes, la température (facultative, "37" à "120" °C ou "varoma"), la vitesse ("soft" pour la vitesse mijotage, ou "0.5" à "10") et le sens inverse. Le serveur écrit les réglages dans le texte (« 3 min/120°C/vitesse 1 ») et les préremplit sur le Thermomix. Exemple :
+{"text": "Ajouter l'huile d'olive et faire revenir {settings}.", "settings": [{"time": 180, "temperature": "120", "speed": "1", "reverse": true}]}
+Les étapes sans réglage (préchauffer le four, servir…) restent du texte simple.
+
 Processus d'Interaction (Workflow des Outils MCP)
 Tu dois utiliser les outils MCP que je t'ai fournis dans l'ordre suivant. Attends ma validation après chaque étape clé.
 

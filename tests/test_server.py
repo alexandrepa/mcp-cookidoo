@@ -3,12 +3,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from cookidoo_api import CookidooInstruction
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
 import server
 from cookidoo_service import CookidooService, CookidooSettings, load_cookidoo_settings
-from schemas import CustomRecipe
+from guided import to_instruction
+from schemas import CustomRecipe, Step
 
 RECIPE = {
     "name": "Cookies",
@@ -63,7 +65,7 @@ async def test_all_tools_registered():
 
 async def test_server_reports_project_version():
     async with Client(server.mcp) as client:
-        assert client.server_info.version == server.VERSION == "1.0.0"
+        assert client.server_info.version == server.VERSION == "1.1.0"
 
 
 async def test_generate_recipe_structure_round_trips_to_upload(service):
@@ -160,7 +162,7 @@ async def test_get_custom_recipe_returns_editable_json(service):
     service.get_custom_recipe.return_value = SimpleNamespace(
         name="Cookies",
         ingredients=RECIPE["ingredients"],
-        instructions=[RECIPE["steps"][0], SimpleNamespace(text=RECIPE["steps"][1])],
+        instructions=[RECIPE["steps"][0], CookidooInstruction(RECIPE["steps"][1])],
         serving_size=6,
         active_time=900,
         total_time=1800,
@@ -169,6 +171,67 @@ async def test_get_custom_recipe_returns_editable_json(service):
     )
     text = await call("get_custom_recipe", recipe_id="01ABC")
     assert json.loads(text.split("\n\n", 1)[1]) == RECIPE
+
+
+SAUTE = {
+    "text": "Faire revenir {settings}.",
+    "settings": [{"time": 180, "temperature": "120", "speed": "1", "reverse": False}],
+}
+
+
+async def test_generate_accepts_structured_steps(service):
+    generated = await call(
+        "generate_recipe_structure",
+        name="Soupe",
+        ingredients=["1 oignon"],
+        steps=["1. Éplucher l'oignon.", SAUTE],
+    )
+    assert json.loads(generated)["steps"] == ["Éplucher l'oignon.", SAUTE]
+
+
+async def test_generate_rejects_invalid_settings(service):
+    with pytest.raises(ToolError):
+        await call(
+            "generate_recipe_structure",
+            name="Soupe",
+            ingredients=["1 oignon"],
+            steps=[{"text": "Mixer {settings}.", "settings": [{"time": 10, "speed": "12"}]}],
+        )
+
+
+async def test_get_custom_recipe_returns_structured_steps(service):
+    service.get_custom_recipe.return_value = SimpleNamespace(
+        name="Soupe",
+        ingredients=["1 oignon"],
+        instructions=["Éplucher.", to_instruction(Step(**SAUTE), "fr-FR")],
+        serving_size=4,
+        active_time=600,
+        total_time=1800,
+        hints=[],
+        url="https://x",
+    )
+    recipe = json.loads((await call("get_custom_recipe", recipe_id="01ABC")).split("\n\n", 1)[1])
+    assert recipe["steps"] == ["Éplucher.", SAUTE]
+    plain = {"text": "Mixer {settings}.", "settings": [{"time": 10, "speed": "4"}]}
+    service.get_custom_recipe.return_value.instructions = [to_instruction(Step(**plain), "fr-FR")]
+    read = (await call("get_custom_recipe", recipe_id="01ABC")).split("\n\n", 1)[1]
+    generated = await call(
+        "generate_recipe_structure", name="Soupe", ingredients="a", steps=[plain]
+    )
+    assert json.loads(read)["steps"] == json.loads(generated)["steps"]
+
+
+async def test_service_sends_settings_in_account_language(monkeypatch):
+    api = SimpleNamespace(create_custom_recipe=AsyncMock(), update_custom_recipe=AsyncMock())
+    svc = CookidooService(CookidooSettings(email="a@b.c", password="x", language="fr-FR"))
+    monkeypatch.setattr(svc, "client", AsyncMock(return_value=api))
+    recipe = CustomRecipe(name="Soupe", ingredients=["1 oignon"], steps=["Éplucher.", SAUTE])
+    await svc.create_custom_recipe(recipe)
+    await svc.update_custom_recipe("01ABC", recipe)
+    expected = ["Éplucher.", to_instruction(Step(**SAUTE), "fr-FR")]
+    assert expected[1].text == "Faire revenir 3 min/120°C/vitesse 1."
+    assert api.create_custom_recipe.await_args.args[0].instructions == expected
+    assert api.update_custom_recipe.await_args.args[1].instructions == expected
 
 
 async def test_prompt_inserts_dish():

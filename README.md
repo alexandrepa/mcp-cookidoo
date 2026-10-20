@@ -9,6 +9,7 @@ An MCP (Model Context Protocol) server for interacting with the Thermomix Cookid
 - **Recipe Search**: Find recipes by keywords and/or ingredients, with a maximum total time
 - **Recipe Details**: Fetch ingredients, steps and times of any Cookidoo recipe
 - **Custom Recipes**: List, read, create and update the recipes on your own account
+- **Guided Cooking**: Steps can carry Thermomix settings (time, temperature, speed, reverse), preset on the machine
 - **Guided Prompt**: `create_thermomix_recipe` walks the assistant through writing a proper Thermomix recipe (EN / FR)
 
 ## Setup
@@ -91,6 +92,29 @@ uv run fastmcp dev inspector fastmcp.json           # MCP Inspector
 | `generate_recipe_structure` | Validate a new recipe and return its JSON |
 | `upload_custom_recipe` | Create a custom recipe from that JSON |
 | `update_custom_recipe` | Replace an existing custom recipe with that JSON |
+
+## Recipe steps
+
+A step is either plain text, or an object whose settings are preset on the Thermomix in
+guided cooking. The text holds one `{settings}` placeholder per setting, replaced by the
+settings written out in the account's language:
+
+```json
+{
+  "text": "Add the olive oil and sauté {settings}, without the measuring cup.",
+  "settings": [{"time": 180, "temperature": "120", "speed": "1", "reverse": true}]
+}
+```
+
+| Field | Values |
+| --- | --- |
+| `time` | Duration in seconds |
+| `temperature` | Optional: `"37"` to `"120"` (°C, Thermomix steps) or `"varoma"` |
+| `speed` | `"soft"` (stirring speed) or `"0.5"` to `"10"` by halves |
+| `reverse` | `true` for reverse blade direction (default `false`) |
+
+Invalid settings are rejected. `get_custom_recipe` returns steps in the same format, so a
+recipe keeps its settings when edited.
 
 ## Development
 

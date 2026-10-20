@@ -21,6 +21,10 @@ Example of a good instruction:
 "Place the onion, halved, into the mixing bowl, then chop 5 sec / speed 5. Scrape down the sides of the mixing bowl with the spatula."
 "Add the olive oil and sauté for 3 min / 120°C / reverse 🔄 / speed 1."
 
+Preset settings: in generate_recipe_structure, a step that uses the Thermomix is an object, not text. Its text holds one {settings} placeholder per setting, and each setting gives the time in seconds, the temperature (optional, "37" to "120" °C or "varoma"), the speed ("soft" for the stirring speed, or "0.5" to "10") and reverse. The server writes the settings into the text ("3 min/120°C/reverse/speed 1") and presets them on the Thermomix. Example:
+{"text": "Add the olive oil and sauté {settings}.", "settings": [{"time": 180, "temperature": "120", "speed": "1", "reverse": true}]}
+Steps without settings (preheating the oven, serving…) stay plain text.
+
 Interaction Process (MCP Tool Workflow)
 You must use the MCP tools I have provided in the following order. Wait for my validation after each key step.
 

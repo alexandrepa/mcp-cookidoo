@@ -22,6 +22,7 @@ from cookidoo_api import (
 from cookidoo_api.helpers import cookidoo_search_result_from_json, get_localization_options
 from dotenv import load_dotenv
 
+from guided import to_instruction
 from schemas import CustomRecipe
 
 
@@ -187,7 +188,9 @@ class CookidooService:
             CookidooCreateCustomRecipe(
                 name=recipe.name,
                 ingredients=recipe.ingredients,
-                instructions=list(recipe.steps),
+                instructions=[
+                    to_instruction(step, self.settings.language) for step in recipe.steps
+                ],
                 serving_size=recipe.servings,
                 active_time=recipe.prep_time * 60,
                 total_time=recipe.total_time * 60,
@@ -206,7 +209,9 @@ class CookidooService:
             CookidooUpdateCustomRecipe(
                 name=recipe.name,
                 ingredients=recipe.ingredients,
-                instructions=list(recipe.steps),
+                instructions=[
+                    to_instruction(step, self.settings.language) for step in recipe.steps
+                ],
                 serving_size=recipe.servings,
                 active_time=recipe.prep_time * 60,
                 total_time=recipe.total_time * 60,

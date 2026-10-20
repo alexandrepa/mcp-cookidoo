@@ -16,7 +16,8 @@ from fastmcp.exceptions import ToolError
 from pydantic import ValidationError
 
 from cookidoo_service import CookidooService, load_cookidoo_settings
-from schemas import CustomRecipe
+from guided import from_instruction
+from schemas import CustomRecipe, Step
 
 PROMPTS_DIR = Path(__file__).parent
 VERSION = tomllib.loads((PROMPTS_DIR / "pyproject.toml").read_text())["project"]["version"]
@@ -56,6 +57,16 @@ def _get_service() -> CookidooService:
         except ValueError as e:
             raise ToolError(f"Configuration error: {e}") from e
     return _cookidoo_service
+
+
+def _steps(value: list[str | Step] | str) -> list[str | Step]:
+    """Accept a list of plain or structured steps, or a string with one step per line."""
+    if isinstance(value, str):
+        return _lines(value, strip_numbering=True)
+    steps: list[str | Step] = []
+    for step in value:
+        steps += [step] if isinstance(step, Step) else _lines([step], strip_numbering=True)
+    return steps
 
 
 def _lines(value: list[str] | str, strip_numbering: bool = False) -> list[str]:
@@ -206,7 +217,8 @@ async def list_custom_recipes() -> str:
 async def get_custom_recipe(recipe_id: str) -> str:
     """
     Get one of the user's custom recipes as JSON, in the format expected by
-    update_custom_recipe. Use it as the starting point before editing.
+    update_custom_recipe. Use it as the starting point before editing. Steps with
+    settings preset on the machine come back as structured steps.
 
     Args:
         recipe_id: The custom recipe ID returned by list_custom_recipes
@@ -219,7 +231,10 @@ async def get_custom_recipe(recipe_id: str) -> str:
     recipe = {
         "name": r.name,
         "ingredients": r.ingredients,
-        "steps": [s if isinstance(s, str) else s.text for s in r.instructions],
+        "steps": [
+            s if isinstance(s, str) else s.model_dump()
+            for s in map(from_instruction, r.instructions)
+        ],
         "servings": r.serving_size,
         "prep_time": max(1, round(r.active_time / 60)),
         "total_time": max(1, round(r.total_time / 60)),
@@ -232,7 +247,7 @@ async def get_custom_recipe(recipe_id: str) -> str:
 async def generate_recipe_structure(
     name: str,
     ingredients: list[str] | str,
-    steps: list[str] | str,
+    steps: list[str | Step] | str,
     servings: int = 4,
     prep_time: int = 30,
     total_time: int = 60,
@@ -247,7 +262,14 @@ async def generate_recipe_structure(
     Args:
         name: Recipe name (required)
         ingredients: Ingredients with quantities, as a list (or one per line)
-        steps: Cooking steps, as a list (or one per line)
+        steps: Cooking steps, as a list (or one per line). A step without machine settings
+            is plain text. A step with Thermomix settings is an object: its text holds one
+            {settings} placeholder per entry of settings, each entry giving time (seconds),
+            temperature ("37" to "120" °C or "varoma", optional), speed ("soft" or "0.5"
+            to "10") and reverse; the settings are written into the text and preset on the
+            machine.
+            Example: {"text": "Add the oil and sauté {settings}.", "settings":
+            [{"time": 180, "temperature": "120", "speed": "1"}]}
         servings: Number of servings (default: 4, range: 1-20)
         prep_time: Active preparation time in minutes (default: 30)
         total_time: Total time in minutes, at least prep_time (default: 60)
@@ -257,7 +279,7 @@ async def generate_recipe_structure(
         recipe = CustomRecipe(
             name=name,
             ingredients=_lines(ingredients),
-            steps=_lines(steps, strip_numbering=True),
+            steps=_steps(steps),
             servings=servings,
             prep_time=prep_time,
             total_time=total_time,
